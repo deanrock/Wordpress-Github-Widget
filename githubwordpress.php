@@ -3,7 +3,7 @@
 Plugin Name: Github Wordpress Widget
 Plugin URI: http://www.pgogy.com/code/groups/wordpress/github-wordpress-widget/
 Description: A widget for displaying github profiles
-Version: 0.98
+Version: 0.99
 Author: Pgogy
 Author URI: http://www.pgogy.com
 License: GPL2
@@ -52,34 +52,10 @@ class githubwordpress extends WP_Widget {
 		echo '</select>';
 		echo '</div>';
 	}
-
-	function widget($args, $instance) {
 	
+	function __get_data($instance) {
 		require(dirname(__FILE__) . "/languages/" . get_bloginfo('language') . "/index.php");
 	
-		if ( isset($instance['error']) && $instance['error'] )
-			return;
-
-		if(isset($args['before_title']))
-			$before_title = $args['before_title'];
-		else
-			$before_title = '<h3 class="widget-title">';
-		
-		if(isset($args['after_title']))
-			$after_title = $args['after_title'];
-		else
-			$after_title = '</h3>';
-		
-		if(isset($args['before_widget']))
-			$before_widget = $args['before_widget'];
-		else
-			$before_widget = '';
-		
-		if(isset($args['after_widget']))
-			$after_widget = $args['after_widget'];
-		else
-			$after_widget = '';
-		
 		$user = $instance['username'];
 		$password = $instance['password'];
 		
@@ -113,14 +89,94 @@ class githubwordpress extends WP_Widget {
 		
 		curl_setopt($ch, CURLOPT_URL, $url);
 		$data = curl_exec($ch);
+		
 		$json = json_decode($data);
+		
+		$out = '';
+		
+		foreach($json as $repo) {
+			if (isset($json->message)) {
+									$out .= $github_error . " " . $json->message;
+									break;
+							}
+
+			$out .= '<li><a target="_blank" href="http://www.github.com/' . $user . '/' . $repo->name . '">' . $repo->name . '</a><br />';
+
+			$url = "https://api.github.com/repos/" . $user . "/" . $repo->name . "/commits";
+			curl_setopt($ch, CURLOPT_URL, $url);
+			$repo_data = curl_exec($ch);
+			$repo = json_decode($repo_data);
+			$total = 0;
+			$counter = 0;
+
+			foreach($repo as $coder) {
+				$total++;
+				
+				if($coder->committer->login == $user)
+					$counter++;
+			}
+
+			if($counter==0){
+			
+				$out .= "0 " . $github_percent_string . "</li>";
+			
+			}else{
+
+				$out .= (int) (($counter / $total) * 100) . " " . $github_percent_string . "</li>";
+				
+			}
+			unset($coder);
+		}
+		
+		curl_close($ch);
+		
+		return $out;
+	}
+
+	function widget($args, $instance) {
+		require(dirname(__FILE__) . "/languages/" . get_bloginfo('language') . "/index.php");
+		
+		$user = $instance['username'];
+	
+		if ( isset($instance['error']) && $instance['error'] )
+			return;
+
+		if(isset($args['before_title']))
+			$before_title = $args['before_title'];
+		else
+			$before_title = '<h3 class="widget-title">';
+		
+		if(isset($args['after_title']))
+			$after_title = $args['after_title'];
+		else
+			$after_title = '</h3>';
+		
+		if(isset($args['before_widget']))
+			$before_widget = $args['before_widget'];
+		else
+			$before_widget = '';
+		
+		if(isset($args['after_widget']))
+			$after_widget = $args['after_widget'];
+		else
+			$after_widget = '';
+		
+		// cache data
+		$data = get_transient( 'githubwordpress_cache' );
+		
+		if ( empty( $data ) ){
+			$data = $this->__get_data($instance);
+			set_transient( 'githubwordpress_cache', $data, DAY_IN_SECONDS );
+		}
+		
+		
 		
 		echo $before_widget;
 		echo $before_title;
 
 		?>GitHub<?= $after_title; ?>
 			<!-- octocat picture -->
-			<div class="github_wordpress_image_holder"><img src="<?= plugins_url('/octocat_small.png', __FILE__); ?>" /></div>
+			<div class="github_wordpress_image_holder" style="text-align:center"><img src="<?= plugins_url('/octocat_small.png', __FILE__); ?>" /></div>
 			<script type="text/javascript">
 				function github_wordpress_toggle(){
 					if (jQuery("#githublistdiv").is(":hidden")) {
@@ -132,8 +188,8 @@ class githubwordpress extends WP_Widget {
 				}
 			</script>
 
-			<a target="_blank" href="https://www.github.com/<?= $user; ?>"><?= $user; ?></a> @ <a target="_blank" href="https://www.github.com">Github</a>
-			<p><a id="githubrepshow" onclick="javascript:github_wordpress_toggle();">
+			<div  style="text-align:center"><a target="_blank" href="https://www.github.com/<?= $user; ?>"><?= $user; ?></a> @ <a target="_blank" href="https://www.github.com">Github</a></div>
+			<p style="text-align:center"><a id="githubrepshow" onclick="javascript:github_wordpress_toggle();">
 
 			<?php if ($instance['hidden'] == "0") {
 				echo $github_hide_string . '</a></p>';
@@ -143,41 +199,9 @@ class githubwordpress extends WP_Widget {
 				echo '<div id="githublistdiv" style="display:none"><ul id="githublist">';
 			}
 			
-			foreach($json as $repo) {
-				if (isset($json->message)) {
-                                        echo $github_error . " " . $json->message;
-                                        break;
-                                }
-
-				echo '<li><a target="_blank" href="http://www.github.com/' . $user . '/' . $repo->name . '">' . $repo->name . '</a><br />';
-
-				$url = "https://api.github.com/repos/" . $user . "/" . $repo->name . "/commits";
-				curl_setopt($ch, CURLOPT_URL, $url);
-				$repo_data = curl_exec($ch);
-				$repo = json_decode($repo_data);
-				$total = 0;
-				$counter = 0;
-
-				foreach($repo as $coder) {
-					$total++;
-					
-					if($coder->committer->login == $user)
-						$counter++;
-				}
-
-				if($counter==0){
-				
-					echo  "0 " . $github_percent_string . "</li>";
-				
-				}else{
-
-					echo (int) (($counter / $total) * 100) . " " . $github_percent_string . "</li>";
-					
-				}
-				unset($coder);
-			}
+			echo $data;
 		
-		curl_close($ch);
+		
 		echo "</ul></div>";
 		echo $after_widget;
 	}
@@ -199,4 +223,3 @@ function github_add_scripts() {
 	echo '<link rel="stylesheet" href="' . plugins_url("/css/github_wordpress_widget.css", __FILE__ ) . '" />';
 	echo '<script src="http://code.jquery.com/jquery-latest.js"></script>';
 }
-?>
